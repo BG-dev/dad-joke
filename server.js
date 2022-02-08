@@ -104,7 +104,11 @@ function main(){
     const longArgFlag = args.longArgFlag
 
     if(longArgFlag === 'searchTerm'){
-        searchJokesByTerm(args.term, checkJokesData)
+        if(args.term){
+            searchJokesByTerm(args.term, checkJokesData)
+        } else {
+            console.log('You should enter a term')
+        }
     } else if(longArgFlag === 'leaderboard'){
         getDataFromJsonFile(FILE_NAME, findMostPopularElement);
     } else {

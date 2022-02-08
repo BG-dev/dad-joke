@@ -5,10 +5,10 @@ const fs = require('fs');
 
 const FILE_NAME = 'jokes'
 
-function searchJokesByTerm(term, callback){
+function searchJokesByTerm(term, callback, page = 1){
     const options = {
         hostname: 'icanhazdadjoke.com',
-        path: `/search?term=${term}`,
+        path: `/search?term=${term}&page=${page}`,
         method: 'GET',
         headers: {
             'Accept': 'application/json',
@@ -24,20 +24,27 @@ function searchJokesByTerm(term, callback){
         console.error(error)
     })
     req.on('close', () => {
-        result = JSON.parse(result).results;
+        result = JSON.parse(result)
         callback(result)
     })
     req.end()   
   }
 
-function checkJokesData(jokes){
-    let msg = 'No jokes were found for that search term';
-    if(jokes.length !== 0){
-        const randomJoke = getRandomElement(jokes).joke
-        msg = `Random joke: ${randomJoke}`
+function findRandJoke(term, jokesInfo){
+    if(jokesInfo.total_jokes !== 0){
+        const jokeNumber = Math.floor(Math.random() * jokesInfo.total_jokes) + 1;
+        const jokePage = jokeNumber / jokesInfo.limit + 1
+        const jokeIndex = jokeNumber % jokesInfo.limit - 1;
+        searchJokesByTerm(term, saveJoke.bind(null, jokeIndex), jokePage)
+    } else {
+        console.log('No jokes were found for that search term')
     }
-    console.log(msg) // output random joke
-    getDataFromJsonFile(FILE_NAME, uploadDataInJsonFile.bind(null, jokes, FILE_NAME))
+}
+
+function saveJoke(jokeIndex, jokes){
+    const joke = jokes.results[jokeIndex]
+    console.log(`Random joke: ${joke.joke}`)
+    getDataFromJsonFile(FILE_NAME, uploadDataInJsonFile.bind(null, joke, FILE_NAME))
 }
 
 function saveDataToJsonFile(data, fileName){
@@ -54,15 +61,17 @@ function getDataFromJsonFile(fileName, callback){
     })
 
     file.on('close', () => {
-        data = JSON.parse(data)
+        if(data != false){
+            data = JSON.parse(data)
+        }
         callback(data);
     })
 }
 
 function uploadDataInJsonFile(newData, fileName, data){
-    let updatedData = newData
+    let updatedData = new Array(newData)
     if(data != false){
-        updatedData = [...data, ...newData]
+        updatedData = [...data, newData]
     }
     saveDataToJsonFile(updatedData, fileName)
 }
@@ -105,7 +114,7 @@ function main(){
 
     if(longArgFlag === 'searchTerm'){
         if(args.term){
-            searchJokesByTerm(args.term, checkJokesData)
+            searchJokesByTerm(args.term, findRandJoke.bind(null, args.term))
         } else {
             console.log('You should enter a term')
         }

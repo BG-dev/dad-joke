@@ -5,7 +5,7 @@ const fs = require('fs');
 
 const FILE_NAME = 'jokes'
 
-function searchJokesByTerm(term, callback, page = 1){
+function searchJokesByTerm(term, page = 1){
     const options = {
         hostname: 'icanhazdadjoke.com',
         path: `/search?term=${term}&page=${page}`,
@@ -15,36 +15,31 @@ function searchJokesByTerm(term, callback, page = 1){
           }
     }
     let result = '';
-    const req = https.request(options, res => {
-        res.on('data', data => {
-            result += data.toString()
-        })
-    })
-    req.on('error', error => {
-        console.error(error)
-    })
-    req.on('close', () => {
-        result = JSON.parse(result)
-        callback(result)
-    })
-    req.end()   
+    return new Promise((resolve, reject) => {
+        const request = https.request(options, res => {
+            res.on('data', data => {
+                result += data.toString()
+            })
+            res.on('error', error => {
+                reject(error)
+            })
+            res.on('end', () => {
+                resolve(JSON.parse(result))
+            })
+        })  
+        request.end()
+    })  
   }
 
-function findRandJoke(term, jokesInfo){
+function findRandJoke(jokesInfo){
     if(jokesInfo.total_jokes !== 0){
         const jokeNumber = Math.floor(Math.random() * jokesInfo.total_jokes) + 1;
-        const jokePage = jokeNumber / jokesInfo.limit + 1
+        const jokePage = Math.floor(jokeNumber / jokesInfo.limit + 1)
         const jokeIndex = jokeNumber % jokesInfo.limit - 1;
-        searchJokesByTerm(term, saveJoke.bind(null, jokeIndex), jokePage)
+        return { jokePage, jokeIndex }
     } else {
         console.log('No jokes were found for that search term')
     }
-}
-
-function saveJoke(jokeIndex, jokes){
-    const joke = jokes.results[jokeIndex]
-    console.log(`Random joke: ${joke.joke}`)
-    getDataFromJsonFile(FILE_NAME, uploadDataInJsonFile.bind(null, joke, FILE_NAME))
 }
 
 function saveDataToJsonFile(data, fileName){
@@ -53,27 +48,24 @@ function saveDataToJsonFile(data, fileName){
     file.end()
 }
 
-function getDataFromJsonFile(fileName, callback){
-    const file = fs.createReadStream(`./${fileName}.json`);
-    let data = ''
-    file.on('data', d => {
-        data += d;
+async function getDataFromJsonFile(fileName){
+    return new Promise((resolve, reject) => {
+        const file = fs.createReadStream(`./${fileName}.json`);
+        let data = ''
+        file.on('data', d => {
+            data += d;
+        })
+        file.on('end', () => {
+            let result;
+            if(data != false){
+                result = JSON.parse(data)
+            }
+            resolve(result)
+        })
+        file.on('error', err => {
+            reject(err)
+        })
     })
-
-    file.on('close', () => {
-        if(data != false){
-            data = JSON.parse(data)
-        }
-        callback(data);
-    })
-}
-
-function uploadDataInJsonFile(newData, fileName, data){
-    let updatedData = new Array(newData)
-    if(data != false){
-        updatedData = [...data, newData]
-    }
-    saveDataToJsonFile(updatedData, fileName)
 }
 
 function findMostPopularElement(data){
@@ -87,11 +79,9 @@ function findMostPopularElement(data){
     })
     
     const mostPopularElement = Array.from(map).sort((a,b) => b[1] - a[1])[0];
-    console.log(data.find(elem => elem.id === mostPopularElement[0]).joke);
+
+    return data.find(elem => elem.id === mostPopularElement[0])
 }
-
-
-const getRandomElement = array => array[Math.floor(Math.random() * array.length)];
 
 function getArgs () {
     const args = {};
@@ -108,18 +98,49 @@ function getArgs () {
     return args;
 }
 
-function main(){
+async function main(){
     const args = getArgs();
     const longArgFlag = args.longArgFlag
 
     if(longArgFlag === 'searchTerm'){
         if(args.term){
-            searchJokesByTerm(args.term, findRandJoke.bind(null, args.term))
+            try {
+                const term = args.term
+                let jokesInfo = await searchJokesByTerm(term)
+                const { jokeIndex, jokePage } = findRandJoke(jokesInfo) || {}
+                if(jokeIndex !== undefined || jokePage !== undefined){
+                    const jokes = (await searchJokesByTerm(term, jokePage)).results
+                    const randomJokeData = jokes[jokeIndex];
+                    console.log(`Random joke: ${randomJokeData.joke}}`)
+                    const oldJokes = await getDataFromJsonFile(FILE_NAME)
+                    
+                    let data;
+                    if(oldJokes !== undefined){
+                        data = [...oldJokes, randomJokeData]
+                    } else {
+                        data = new Array(randomJokeData)
+                    }
+                    saveDataToJsonFile(data, FILE_NAME)
+                }
+            } catch(error) {
+                console.error(error)
+            }
         } else {
             console.log('You should enter a term')
         }
     } else if(longArgFlag === 'leaderboard'){
-        getDataFromJsonFile(FILE_NAME, findMostPopularElement);
+        try{
+            const jokes = await getDataFromJsonFile(FILE_NAME);
+            let msg = 'Jokes.json is empty';
+            if(jokes !== undefined){
+                const mostPopularJoke = findMostPopularElement(jokes).joke;
+                msg = `The most popular joke: ${mostPopularJoke}`
+            }
+            console.log(msg);
+            
+        } catch(error){
+            console.error(error)
+        }
     } else {
         console.log("Unknown command");
     }

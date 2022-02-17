@@ -2,6 +2,7 @@
 
 const https = require('https')
 const fs = require('fs');
+const prompt = require('prompt')
 
 const FILE_NAME = 'jokes'
 const FILE_EXTENSION = 'txt'
@@ -77,7 +78,11 @@ function saveDataToFile(data, fileName, fileExtension){
 
 async function getDataFromFile(fileName, fileExtension){
     return new Promise((resolve, reject) => {
-        const file = fs.createReadStream(`./${fileName}.${fileExtension}`);
+        const path = `./${fileName}.${fileExtension}`
+        if(!fs.existsSync(path)){
+            resolve()
+        }
+        const file = fs.createReadStream(path);
         let data = ''
         file.on('data', d => {
             data += d;
@@ -126,13 +131,13 @@ function getArgs () {
 }
 
 async function main(){
-    const args = getArgs();
-    const longArgFlag = args.longArgFlag
+    const {command} = await prompt.get(['command']);
+    console.log()
 
-    if(longArgFlag === 'searchTerm'){
-        if(args.term){
+    if(command === 'searchTerm'){
+        const {term} = await prompt.get(['term']);
+        if(term){
             try {
-                const term = args.term
                 let jokesInfo = await searchJokesByTerm(term)
                 const { jokeIndex, jokePage } = findRandJoke(jokesInfo) || {}
                 if(jokeIndex !== undefined || jokePage !== undefined){
@@ -155,10 +160,10 @@ async function main(){
         } else {
             console.log('You should enter a term')
         }
-    } else if(longArgFlag === 'leaderboard'){
+    } else if(command === 'leaderboard'){
         try{
             const jokes = getUnformattedJokesArray(await getDataFromFile(FILE_NAME, FILE_EXTENSION));
-            let msg = 'Jokes.json is empty';
+            let msg = `${FILE_NAME}.${FILE_EXTENSION} is empty`;
             if(jokes !== undefined){
                 const mostPopularJoke = findMostPopularElement(jokes).joke;
                 msg = `The most popular joke: ${mostPopularJoke}`

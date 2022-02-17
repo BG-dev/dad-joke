@@ -4,6 +4,7 @@ const https = require('https')
 const fs = require('fs');
 
 const FILE_NAME = 'jokes'
+const FILE_EXTENSION = 'txt'
 
 function searchJokesByTerm(term, page = 1){
     const options = {
@@ -42,15 +43,41 @@ function findRandJoke(jokesInfo){
     }
 }
 
-function saveDataToJsonFile(data, fileName){
-    const file = fs.createWriteStream(`./${fileName}.json`)
-    file.write(JSON.stringify(data, null, 4))
+
+function getFormattedJokesArray(array) {
+    let formattedArray = '';
+    array.forEach(elem => formattedArray += `${elem.id}|${elem.joke}\n`)
+    return formattedArray;
+}
+
+function getUnformattedJokesArray(formattedArray){
+
+    if(formattedArray === undefined){
+        return;
+    }
+    let array = []
+    formattedArray.split('\n').forEach(elem => {
+        if(elem != false){
+            const joke = elem.split('|')
+            array.push({
+                id: joke[0],
+                joke: joke[1]
+            })
+        }
+    })
+
+    return array
+}
+
+function saveDataToFile(data, fileName, fileExtension){
+    const file = fs.createWriteStream(`./${fileName}.${fileExtension}`)
+    file.write(data)
     file.end()
 }
 
-async function getDataFromJsonFile(fileName){
+async function getDataFromFile(fileName, fileExtension){
     return new Promise((resolve, reject) => {
-        const file = fs.createReadStream(`./${fileName}.json`);
+        const file = fs.createReadStream(`./${fileName}.${fileExtension}`);
         let data = ''
         file.on('data', d => {
             data += d;
@@ -58,7 +85,7 @@ async function getDataFromJsonFile(fileName){
         file.on('end', () => {
             let result;
             if(data != false){
-                result = JSON.parse(data)
+                result = data
             }
             resolve(result)
         })
@@ -112,15 +139,15 @@ async function main(){
                     const jokes = (await searchJokesByTerm(term, jokePage)).results
                     const randomJokeData = jokes[jokeIndex];
                     console.log(`Random joke: ${randomJokeData.joke}}`)
-                    const oldJokes = await getDataFromJsonFile(FILE_NAME)
-                    
+                    const dataFromFile = await getDataFromFile(FILE_NAME, FILE_EXTENSION);
+                    const oldJokes = getUnformattedJokesArray(dataFromFile)
                     let data;
                     if(oldJokes !== undefined){
                         data = [...oldJokes, randomJokeData]
                     } else {
                         data = new Array(randomJokeData)
                     }
-                    saveDataToJsonFile(data, FILE_NAME)
+                    saveDataToFile(getFormattedJokesArray(data), FILE_NAME, FILE_EXTENSION)
                 }
             } catch(error) {
                 console.error(error)
@@ -130,7 +157,7 @@ async function main(){
         }
     } else if(longArgFlag === 'leaderboard'){
         try{
-            const jokes = await getDataFromJsonFile(FILE_NAME);
+            const jokes = getUnformattedJokesArray(await getDataFromFile(FILE_NAME, FILE_EXTENSION));
             let msg = 'Jokes.json is empty';
             if(jokes !== undefined){
                 const mostPopularJoke = findMostPopularElement(jokes).joke;

@@ -4,6 +4,7 @@ const https = require('https')
 const fs = require('fs');
 
 const FILE_NAME = 'jokes'
+const FILE_EXTENSION = 'txt'
 
 function searchJokesByTerm(term, page = 1){
     const options = {
@@ -31,26 +32,51 @@ function searchJokesByTerm(term, page = 1){
     })  
   }
 
-function findRandJoke(jokesInfo){
+function findRandomJoke(jokesInfo){
     if(jokesInfo.total_jokes !== 0){
         const jokeNumber = Math.floor(Math.random() * jokesInfo.total_jokes) + 1;
         const jokePage = Math.floor(jokeNumber / jokesInfo.limit + 1)
         const jokeIndex = jokeNumber % jokesInfo.limit - 1;
         return { jokePage, jokeIndex }
     } else {
+        return 
         console.log('No jokes were found for that search term')
     }
 }
 
-function saveDataToJsonFile(data, fileName){
-    const file = fs.createWriteStream(`./${fileName}.json`)
-    file.write(JSON.stringify(data, null, 4))
+
+function getFormattedJokesArray(array) {
+    let formattedArray = '';
+    array.forEach(elem => formattedArray += `${elem.id}|${elem.joke}\n`)
+    return formattedArray;
+}
+
+function getUnformattedJokesArray(formattedArray){
+
+    if(formattedArray == false){
+        return;
+    }
+    let array = []
+    formattedArray.split('\n').forEach(elem => {
+        const joke = elem.split('|')
+        array.push({
+            id: joke[0],
+            joke: joke[1]
+        })
+    })
+
+    return array
+}
+
+function saveDataToFile(data, fileName, fileExtension){
+    const file = fs.createWriteStream(`./${fileName}.${fileExtension}`)
+    file.write(data)
     file.end()
 }
 
-async function getDataFromJsonFile(fileName){
+async function getDataFromFile(fileName, fileExtension){
     return new Promise((resolve, reject) => {
-        const file = fs.createReadStream(`./${fileName}.json`);
+        const file = fs.createReadStream(`./${fileName}.${fileExtension}`);
         let data = ''
         file.on('data', d => {
             data += d;
@@ -58,7 +84,7 @@ async function getDataFromJsonFile(fileName){
         file.on('end', () => {
             let result;
             if(data != false){
-                result = JSON.parse(data)
+                result = data
             }
             resolve(result)
         })
@@ -107,20 +133,21 @@ async function main(){
             try {
                 const term = args.term
                 let jokesInfo = await searchJokesByTerm(term)
-                const { jokeIndex, jokePage } = findRandJoke(jokesInfo) || {}
+                const { jokeIndex, jokePage } = findRandomJoke(jokesInfo) || {}
                 if(jokeIndex !== undefined || jokePage !== undefined){
                     const jokes = (await searchJokesByTerm(term, jokePage)).results
                     const randomJokeData = jokes[jokeIndex];
                     console.log(`Random joke: ${randomJokeData.joke}}`)
-                    const oldJokes = await getDataFromJsonFile(FILE_NAME)
-                    
+                    const dataFromFile = await getDataFromFile(FILE_NAME, FILE_EXTENSION);
+                    const oldJokes = getUnformattedJokesArray(dataFromFile)
+                    console.log(oldJokes)
                     let data;
                     if(oldJokes !== undefined){
                         data = [...oldJokes, randomJokeData]
                     } else {
                         data = new Array(randomJokeData)
                     }
-                    saveDataToJsonFile(data, FILE_NAME)
+                    saveDataToFile(getFormattedJokesArray(data), FILE_NAME, FILE_EXTENSION)
                 }
             } catch(error) {
                 console.error(error)
@@ -130,7 +157,7 @@ async function main(){
         }
     } else if(longArgFlag === 'leaderboard'){
         try{
-            const jokes = await getDataFromJsonFile(FILE_NAME);
+            const jokes = getUnformattedJokesArray(await getDataFromFile(FILE_NAME, FILE_EXTENSION));
             let msg = 'Jokes.json is empty';
             if(jokes !== undefined){
                 const mostPopularJoke = findMostPopularElement(jokes).joke;

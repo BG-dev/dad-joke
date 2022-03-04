@@ -8,8 +8,18 @@ require('dotenv').config();
 const FILE_NAME = 'jokes'
 const FILE_EXTENSION = 'txt'
 
-async function executeSearchTermCommand(term){
+function executeCommand(command){
+    const commands = {
+        searchTerm: executeSearchTermCommand,
+        leaderboard: executeLeaderboardCommand,
+    }
+
+    return commands[command]()
+}
+
+async function executeSearchTermCommand(){
     try {
+        term = getArgs().term
         if(!term) throw new Error("Enter a term for searching")
     
         const randomJoke = await getRandomJokeByTerm(term)
@@ -225,7 +235,7 @@ function getArgs () {
     const args = {};
     process.argv
         .slice(2, process.argv.length)
-        .forEach( arg => {
+        .forEach(arg => {
             if (arg.slice(0,2) === '--') {
                 args.longArgFlag = arg.slice(2, arg.length);
             }
@@ -237,19 +247,9 @@ function getArgs () {
 }
 
 async function main(){
-    const args = getArgs();
-    const longArgFlag = args.longArgFlag
+    const command = getArgs.longArgFlag
 
-    switch(longArgFlag){
-        case 'searchTerm':
-            executeSearchTermCommand(args.term)
-            break;
-        case 'leaderboard':
-            executeLeaderboardCommand()
-            break
-        default:
-            console.log("Unknown command");
-    }
+    executeCommand(command)
 }
 
 main()

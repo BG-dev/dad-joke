@@ -14,7 +14,7 @@ function executeCommand(command){
         leaderboard: executeLeaderboardCommand,
     }
 
-    return commands[command]()
+    return commands[command]?.()
 }
 
 async function executeSearchTermCommand(){
@@ -48,6 +48,8 @@ async function getRandomJokeByTerm(term){
     if(!term) throw new Error('Incorrect term!')
 
     const jokesMetadata = await getJokesMetadataByTerm(term)
+    if(jokesMetadata.results.length === 0) throw new Error('Joke was not found')
+
     const randomPage = getRandomPage(jokesMetadata.total_pages)
     const randomNumberFromPage = getRandomNumberFromPage(jokesMetadata)
     const jokes = await getJokesFromPageByTerm(term, randomPage)
@@ -246,9 +248,8 @@ function getArgs () {
     return args;
 }
 
-async function main(){
-    const command = getArgs.longArgFlag
-
+function main(){
+    const command = getArgs().longArgFlag
     executeCommand(command)
 }
 

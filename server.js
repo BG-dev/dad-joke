@@ -2,80 +2,188 @@
 
 const https = require('https')
 const fs = require('fs');
+const _ = require("lodash");
+require('dotenv').config();
 
 const FILE_NAME = 'jokes'
 const FILE_EXTENSION = 'txt'
 
-function searchJokesByTerm(term, page = 1){
+async function executeSearchTermCommand(term){
+    try {
+        if(!term) throw new Error("Enter a term for searching")
+    
+        const randomJoke = await getRandomJokeByTerm(term)
+        printRandomJoke(randomJoke.joke)
+        appendJokeToFile(randomJoke, FILE_NAME, FILE_EXTENSION)
+    } catch (error) {
+        console.log(error.message)
+    }
+}
+
+async function executeLeaderboardCommand(){
+    try {
+        const jokes = await getJokesFromFile(FILE_NAME, FILE_EXTENSION)
+        const mostPopularJoke = getMostPopularJoke(jokes)
+
+        printLeaderboard(mostPopularJoke)
+
+    } catch (error) {
+        console.log(error.message)
+    }
+}
+
+const getRandomNumberByRange = range => Math.floor(Math.random() * range) + 1
+
+async function getRandomJokeByTerm(term){
+    if(!term) throw new Error('Incorrect term!')
+
+    const jokesMetadata = await getJokesMetadataByTerm(term)
+    const randomPage = getRandomPage(jokesMetadata.total_pages)
+    const randomNumberFromPage = getRandomNumberFromPage(jokesMetadata)
+    const jokes = await getJokesFromPageByTerm(term, randomPage)
+    const randomJoke = jokes[randomNumberFromPage];
+
+    return randomJoke
+}
+
+function getRandomPage(totalPages) {
+    if(!totalPages) throw new SyntaxError('Incorrect total pages value')
+
+    if(totalPages === 1) return 1
+
+    return getRandomNumberByRange(totalPages)
+}
+
+function getRandomNumberFromPage(metadata) {
+    if(!metadata) throw new SyntaxError('Incorrect metadata')
+
+    if(metadata.total_pages === 1) return getRandomNumberByRange(metadata.total_jokes-1)
+
+    return getRandomNumberByRange(metadata.limit)
+}
+
+function printRandomJoke(randomJokeText){
+    if(!randomJokeText) throw new Error('Random joke is null')
+
+    console.log(`Random joke: ${randomJokeText}`)
+}
+
+function printLeaderboard(mostPopularJokeText){
+    if(!mostPopularJokeText) throw new Error('The most popular joke is null')
+
+    console.log(`The most popular joke: ${mostPopularJokeText}`)
+}
+
+async function getJokesMetadataByTerm(term){
+    if(!term) throw new Error('Incorrect term!')
+
+    const apiPath = `/search?term=${term}`
+    const jokesMetadata = await getDataFromApi(apiPath)
+
+    return jokesMetadata
+}
+
+async function getJokesFromPageByTerm(term, jokeApiPage){
+    if(!term) throw new Error('Incorrect term!')
+
+    const apiPath = `/search?term=${term}&page=${jokeApiPage}`
+    const jokes = (await getDataFromApi(apiPath)).results
+    
+    return jokes
+}
+
+function getDataFromApi(apiPath){
+    if(!apiPath) throw new Error('Incorrect path!')
+
     const options = {
-        hostname: 'icanhazdadjoke.com',
-        path: `/search?term=${term}&page=${page}`,
+        hostname: process.env.HOSTNAME,
+        path: apiPath,
         method: 'GET',
         headers: {
             'Accept': 'application/json',
           }
     }
-    let result = '';
-    return new Promise((resolve, reject) => {
+
+    const result = new Promise((resolve, reject) => {
         const request = https.request(options, res => {
+            let resultData = ''
             res.on('data', data => {
-                result += data.toString()
+                resultData += data.toString()
             })
             res.on('error', error => {
                 reject(error)
             })
             res.on('end', () => {
-                resolve(JSON.parse(result))
+                try{
+                    resolve(JSON.parse(resultData))
+                } catch (error){
+                    console.log(error.message)
+                }
             })
         })  
         request.end()
-    })  
-  }
-
-function findRandomJoke(jokesInfo){
-    if(jokesInfo.total_jokes !== 0){
-        const jokeNumber = Math.floor(Math.random() * jokesInfo.total_jokes) + 1;
-        const jokePage = Math.floor(jokeNumber / jokesInfo.limit + 1)
-        const jokeIndex = jokeNumber % jokesInfo.limit - 1;
-        return { jokePage, jokeIndex }
-    } else {
-        return 
-        console.log('No jokes were found for that search term')
-    }
-}
-
-
-function getFormattedJokesArray(array) {
-    let formattedArray = '';
-    array.forEach(elem => formattedArray += `${elem.id}|${elem.joke}\n`)
-    return formattedArray;
-}
-
-function getUnformattedJokesArray(formattedArray){
-
-    if(formattedArray == false){
-        return;
-    }
-    let array = []
-    formattedArray.split('\n').forEach(elem => {
-        const joke = elem.split('|')
-        array.push({
-            id: joke[0],
-            joke: joke[1]
-        })
     })
 
-    return array
+    return result
 }
 
-function saveDataToFile(data, fileName, fileExtension){
-    const file = fs.createWriteStream(`./${fileName}.${fileExtension}`)
-    file.write(data)
-    file.end()
+const getFormattedJoke = unformattedJoke => `${unformattedJoke.id}|${unformattedJoke.joke}\n`
+
+function getUnformattedJoke(formattedJoke){
+    if(!formattedJoke) throw new SyntaxError("Incorrect value")
+
+    const jokeData = formattedJoke.split('|')
+    const unformattedJoke = {
+        id: jokeData[0],
+        joke: jokeData[1]
+    }
+
+    return unformattedJoke
 }
 
-async function getDataFromFile(fileName, fileExtension){
-    return new Promise((resolve, reject) => {
+function getUnformattedJokesArray(formattedJokes){
+    if(!formattedJokes) throw new SyntaxError("Incorrect jokes value")
+
+    let unformattedJokes = []
+    formattedJokes
+        .split('\n')
+        .forEach(formattedJoke => {
+            if(formattedJoke){
+                unformattedJokes.push(getUnformattedJoke(formattedJoke))
+            }
+        })
+    return unformattedJokes
+}
+
+function appendJokeToFile(joke, fileName, fileExtension){
+    if(!joke || !fileName, !fileExtension) throw new SyntaxError('Incorrect value')
+
+    const formattedJoke = getFormattedJoke(joke)
+    appendDataToFile(formattedJoke, fileName, fileExtension)
+}
+
+function appendDataToFile(data, fileName, fileExtension){
+    const filePath = `${fileName}.${fileExtension}`
+
+    fs.appendFile(filePath, data, function (error) {
+        if (error) throw error;
+    });
+
+}
+
+async function getJokesFromFile(fileName, fileExtension){
+    if(!fileName || !fileExtension) throw new SyntaxError('Incorrect file info')
+
+    const formattedJokes = await getDataFromFile(fileName, fileExtension)
+    const unformattedJokes = getUnformattedJokesArray(formattedJokes)
+
+    return unformattedJokes
+}
+
+function getDataFromFile(fileName, fileExtension){
+    if(!fileName || !fileExtension) throw new SyntaxError('Incorrect file info')
+
+    const result = new Promise((resolve, reject) => {
         const file = fs.createReadStream(`./${fileName}.${fileExtension}`);
         let data = ''
         file.on('data', d => {
@@ -92,21 +200,25 @@ async function getDataFromFile(fileName, fileExtension){
             reject(err)
         })
     })
+
+    return result
 }
 
-function findMostPopularElement(data){
-    let map = new Map();
-    data.forEach(elem => {
-        if(map.has(elem.id)){
-            map.set(elem.id, map.get(elem.id) + 1)
-        } else{
-            map.set(elem.id, 1)
-        }
-    })
-    
-    const mostPopularElement = Array.from(map).sort((a,b) => b[1] - a[1])[0];
+function getMostPopularJoke(jokes){
+    let jokesTexts = jokes.map(element => element.joke)
 
-    return data.find(elem => elem.id === mostPopularElement[0])
+    return getMostPopularElement(jokesTexts)
+}
+
+function getMostPopularElement(array){
+    if(!array || !Array.isArray(array)) throw new SyntaxError('Incorrect value')
+
+    const mostPopularElement = _.head(_(array)
+        .countBy()
+        .entries()
+        .maxBy(_.last));
+
+    return mostPopularElement
 }
 
 function getArgs () {
@@ -128,48 +240,15 @@ async function main(){
     const args = getArgs();
     const longArgFlag = args.longArgFlag
 
-    if(longArgFlag === 'searchTerm'){
-        if(args.term){
-            try {
-                const term = args.term
-                let jokesInfo = await searchJokesByTerm(term)
-                const { jokeIndex, jokePage } = findRandomJoke(jokesInfo) || {}
-                if(jokeIndex !== undefined || jokePage !== undefined){
-                    const jokes = (await searchJokesByTerm(term, jokePage)).results
-                    const randomJokeData = jokes[jokeIndex];
-                    console.log(`Random joke: ${randomJokeData.joke}}`)
-                    const dataFromFile = await getDataFromFile(FILE_NAME, FILE_EXTENSION);
-                    const oldJokes = getUnformattedJokesArray(dataFromFile)
-                    console.log(oldJokes)
-                    let data;
-                    if(oldJokes !== undefined){
-                        data = [...oldJokes, randomJokeData]
-                    } else {
-                        data = new Array(randomJokeData)
-                    }
-                    saveDataToFile(getFormattedJokesArray(data), FILE_NAME, FILE_EXTENSION)
-                }
-            } catch(error) {
-                console.error(error)
-            }
-        } else {
-            console.log('You should enter a term')
-        }
-    } else if(longArgFlag === 'leaderboard'){
-        try{
-            const jokes = getUnformattedJokesArray(await getDataFromFile(FILE_NAME, FILE_EXTENSION));
-            let msg = 'Jokes.json is empty';
-            if(jokes !== undefined){
-                const mostPopularJoke = findMostPopularElement(jokes).joke;
-                msg = `The most popular joke: ${mostPopularJoke}`
-            }
-            console.log(msg);
-            
-        } catch(error){
-            console.error(error)
-        }
-    } else {
-        console.log("Unknown command");
+    switch(longArgFlag){
+        case 'searchTerm':
+            executeSearchTermCommand(args.term)
+            break;
+        case 'leaderboard':
+            executeLeaderboardCommand()
+            break
+        default:
+            console.log("Unknown command");
     }
 }
 
